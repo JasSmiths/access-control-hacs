@@ -44,6 +44,9 @@
       },
       "flagged_today": {
         "name": "Flagged today"
+      },
+      "last_event": {
+        "name": "Last event"
       }
     },
     "binary_sensor": {

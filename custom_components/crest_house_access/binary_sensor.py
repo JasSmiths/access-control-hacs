@@ -41,4 +41,5 @@ class CrestHouseAccessOccupiedBinarySensor(CrestHouseAccessEntity, BinarySensorE
         return {
             "generated_at": self.coordinator.data.get("generated_at"),
             "open_sessions": self.coordinator.data.get("open_sessions", []),
+            "recent_events": self.coordinator.data.get("recent_events", []),
         }
