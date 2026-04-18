@@ -13,7 +13,7 @@ from .const import DOMAIN
 from .entity import CrestHouseAccessEntity
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class CrestHouseAccessSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Dict[str, Any]], int]
 
