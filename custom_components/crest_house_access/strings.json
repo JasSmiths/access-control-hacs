@@ -47,6 +47,9 @@
       "flagged_today": {
         "name": "Flagged today"
       },
+      "heartbeat": {
+        "name": "Heartbeat"
+      },
       "last_event": {
         "name": "Last event"
       },

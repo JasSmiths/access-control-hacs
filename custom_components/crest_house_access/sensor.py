@@ -74,6 +74,22 @@ SENSORS: Tuple[CrestHouseAccessSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     CrestHouseAccessSensorDescription(
+        key="heartbeat",
+        translation_key="heartbeat",
+        icon="mdi:heart-pulse",
+        native_unit_of_measurement="ms",
+        value_fn=lambda data: (
+            int(data["heartbeat_ms"]) if data.get("heartbeat_ms") is not None else None
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        attributes_fn=lambda data: {
+            "generated_at": data.get("generated_at"),
+            "heartbeat_measured_at": data.get("heartbeat_measured_at"),
+            "heartbeat_source": data.get("heartbeat_source"),
+            "latest_gate_signal": data.get("latest_gate_signal"),
+        },
+    ),
+    CrestHouseAccessSensorDescription(
         key="last_event",
         translation_key="last_event",
         icon="mdi:history",

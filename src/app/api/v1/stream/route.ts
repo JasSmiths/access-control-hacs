@@ -2,6 +2,7 @@ import { loadDashboard } from "@/lib/dashboard";
 import { verifyApiKey } from "@/lib/api-keys";
 import { auditLog } from "@/lib/audit";
 import { getBus } from "@/lib/events-bus";
+import { getLatestGateSignal } from "@/lib/gate-signals";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,10 +22,12 @@ function buildSnapshot() {
     ok: true,
     generated_at: new Date().toISOString(),
     contractors: snapshot.contractors,
+    people: snapshot.people,
     on_site: snapshot.openSessions.length,
     flagged_today: snapshot.flaggedToday,
     open_sessions: snapshot.openSessions,
     recent_events: snapshot.recent,
+    latest_gate_signal: getLatestGateSignal(),
   };
 }
 

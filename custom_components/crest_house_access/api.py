@@ -164,3 +164,41 @@ class CrestHouseAccessApiClient:
             raise CrestHouseAccessCannotConnect
 
         return payload
+
+    async def async_post_heartbeat(
+        self,
+        source: str,
+        heartbeat_ms: int,
+        snapshot_generated_at: str,
+        measured_at: str,
+    ) -> Dict[str, Any]:
+        """Send a heartbeat sample back to the app."""
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/heartbeat",
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json={
+                    "source": source,
+                    "heartbeat_ms": heartbeat_ms,
+                    "snapshot_generated_at": snapshot_generated_at,
+                    "measured_at": measured_at,
+                },
+                ssl=self._verify_ssl,
+                timeout=COORDINATOR_TIMEOUT_SECONDS,
+            ) as response:
+                if response.status == 401:
+                    raise CrestHouseAccessInvalidAuth
+
+                response.raise_for_status()
+                payload = await response.json()
+        except CrestHouseAccessInvalidAuth:
+            raise
+        except ClientResponseError as err:
+            raise CrestHouseAccessCannotConnect from err
+        except ClientError as err:
+            raise CrestHouseAccessCannotConnect from err
+
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            raise CrestHouseAccessCannotConnect
+
+        return payload
