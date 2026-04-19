@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import CrestHouseAccessDataUpdateCoordinator
@@ -23,7 +24,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await coordinator.async_start_realtime()
+
+    @callback
+    def _start_realtime_listener(*_: object) -> None:
+        hass.async_create_task(coordinator.async_start_realtime())
+
+    if hass.is_running:
+        _start_realtime_listener()
+    else:
+        entry.async_on_unload(
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED, _start_realtime_listener
+            )
+        )
+
     return True
 
 
