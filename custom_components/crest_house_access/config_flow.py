@@ -24,7 +24,10 @@ from .api import (
     normalize_base_url,
 )
 from .const import (
+    CONF_ENABLE_GATE_SYNC,
+    CONF_GATE_COVER_ENTITY_ID,
     DEFAULT_NAME,
+    DEFAULT_GATE_COVER_ENTITY_ID,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
     MIN_SCAN_INTERVAL_MINUTES,
@@ -146,6 +149,19 @@ class CrestHouseAccessOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                             self.config_entry.data.get(CONF_VERIFY_SSL, True),
                         ),
                     ): bool,
+                    vol.Optional(
+                        CONF_ENABLE_GATE_SYNC,
+                        default=self.config_entry.options.get(
+                            CONF_ENABLE_GATE_SYNC, True
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_GATE_COVER_ENTITY_ID,
+                        default=self.config_entry.options.get(
+                            CONF_GATE_COVER_ENTITY_ID,
+                            DEFAULT_GATE_COVER_ENTITY_ID,
+                        ),
+                    ): str,
                 }
             ),
         )

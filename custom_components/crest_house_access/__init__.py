@@ -3,8 +3,15 @@ from __future__ import annotations
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import DOMAIN, PLATFORMS
+from .const import (
+    CONF_ENABLE_GATE_SYNC,
+    CONF_GATE_COVER_ENTITY_ID,
+    DEFAULT_GATE_COVER_ENTITY_ID,
+    DOMAIN,
+    PLATFORMS,
+)
 from .coordinator import CrestHouseAccessDataUpdateCoordinator
 
 
@@ -37,6 +44,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 EVENT_HOMEASSISTANT_STARTED, _start_realtime_listener
             )
         )
+
+    if entry.options.get(CONF_ENABLE_GATE_SYNC, True):
+        gate_entity_id = entry.options.get(
+            CONF_GATE_COVER_ENTITY_ID, DEFAULT_GATE_COVER_ENTITY_ID
+        )
+
+        @callback
+        def _handle_gate_state_change(event) -> None:
+            old_state = event.data.get("old_state")
+            new_state = event.data.get("new_state")
+            if new_state is None:
+                return
+            if new_state.state not in {"open", "opening"}:
+                return
+            if old_state is not None and old_state.state == new_state.state:
+                return
+
+            occurred_at = new_state.last_changed.isoformat()
+            hass.async_create_task(
+                coordinator.async_notify_gate_signal(
+                    gate_entity_id,
+                    new_state.state,
+                    occurred_at,
+                )
+            )
+
+        entry.async_on_unload(
+            async_track_state_change_event(
+                hass,
+                [gate_entity_id],
+                _handle_gate_state_change,
+            )
+        )
+
 
     return True
 

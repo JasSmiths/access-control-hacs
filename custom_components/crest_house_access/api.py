@@ -127,3 +127,40 @@ class CrestHouseAccessApiClient:
             raise CrestHouseAccessCannotConnect from err
         except ClientError as err:
             raise CrestHouseAccessCannotConnect from err
+
+    async def async_post_gate_signal(
+        self,
+        entity_id: str,
+        state: str,
+        occurred_at: str,
+    ) -> Dict[str, Any]:
+        """Send a Home Assistant gate-state signal back to the app."""
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/gate-signal",
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json={
+                    "entity_id": entity_id,
+                    "state": state,
+                    "occurred_at": occurred_at,
+                    "source": "home_assistant",
+                },
+                ssl=self._verify_ssl,
+                timeout=COORDINATOR_TIMEOUT_SECONDS,
+            ) as response:
+                if response.status == 401:
+                    raise CrestHouseAccessInvalidAuth
+
+                response.raise_for_status()
+                payload = await response.json()
+        except CrestHouseAccessInvalidAuth:
+            raise
+        except ClientResponseError as err:
+            raise CrestHouseAccessCannotConnect from err
+        except ClientError as err:
+            raise CrestHouseAccessCannotConnect from err
+
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            raise CrestHouseAccessCannotConnect
+
+        return payload

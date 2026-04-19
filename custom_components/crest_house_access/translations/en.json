@@ -29,7 +29,9 @@
         "title": "Crest House Access options",
         "data": {
           "scan_interval": "Polling interval (minutes)",
-          "verify_ssl": "Verify SSL certificate"
+          "verify_ssl": "Verify SSL certificate",
+          "enable_gate_sync": "Sync gate-open events back to the app",
+          "gate_cover_entity_id": "Gate cover entity id"
         }
       }
     }
