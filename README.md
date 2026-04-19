@@ -45,6 +45,34 @@ The container runs SQL migrations on startup (`scripts/migrate.mjs`) against
 This repo now includes a HACS-installable custom integration under
 `custom_components/crest_house_access`.
 
+## Versioning
+
+This repository ships two separate deliverables and they are versioned
+independently:
+
+- Main app version: `package.json`
+- Home Assistant integration version: `custom_components/crest_house_access/manifest.json`
+
+Current baseline:
+
+- App: `0.1.0`
+- HA integration: `0.3.6`
+
+Versioning rules:
+
+- Bump the app version when the web app, admin UI, API, or database-facing app
+  behavior changes.
+- Bump the HA integration version when the Home Assistant integration changes.
+- Bump both when a change affects both deliverables.
+
+Git tag convention:
+
+- App releases use tags like `app-v0.1.0`
+- HA integration releases use tags like `ha-v0.3.6`
+
+This keeps release history readable even though both artifacts live in the same
+repository.
+
 ### What it exposes
 
 - `sensor.on_site`
