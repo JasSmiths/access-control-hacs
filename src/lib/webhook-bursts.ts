@@ -109,12 +109,19 @@ function findActiveBurstForSource(source: string, receivedAt: string): BurstRow 
     .get(source, receivedAt) as BurstRow | undefined;
 }
 
-function findCandidateByIngestKey(ingestKey: string): CandidateRow | undefined {
+function findCandidateByIngestKeyAndPlate(
+  ingestKey: string,
+  plate: string
+): CandidateRow | undefined {
   return getDb()
     .prepare(
-      "SELECT * FROM webhook_burst_candidates WHERE ingest_key = ? LIMIT 1"
+      `SELECT *
+         FROM webhook_burst_candidates
+        WHERE ingest_key = ?
+          AND plate_normalized = ?
+        LIMIT 1`
     )
-    .get(ingestKey) as CandidateRow | undefined;
+    .get(ingestKey, plate) as CandidateRow | undefined;
 }
 
 function finalizeExpiredPendingBursts(nowIso = new Date().toISOString()) {
@@ -145,7 +152,7 @@ function registerCandidate(args: {
   finalizeExpiredPendingBursts(receivedAt);
 
   if (args.ingestKey) {
-    const existing = findCandidateByIngestKey(args.ingestKey);
+    const existing = findCandidateByIngestKeyAndPlate(args.ingestKey, plate);
     if (existing) {
       return {
         burstId: existing.burst_id,
