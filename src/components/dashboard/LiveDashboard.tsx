@@ -10,6 +10,7 @@ import { ExpandModal } from "@/components/ui/ExpandModal";
 import { Button } from "@/components/ui/Button";
 import { Users, Clock, LogIn, AlertTriangle } from "lucide-react";
 import { formatDateTime, formatDuration } from "@/lib/format";
+import { useRetryingEventSource } from "@/lib/useRetryingEventSource";
 
 export type DashboardData = {
   contractors: number;
@@ -39,6 +40,7 @@ export type DashboardData = {
 type RecentEvent = DashboardData["recent"][number];
 type OpenSession = DashboardData["openSessions"][number];
 type ClickOrigin = { x: number; y: number };
+const STREAM_EVENTS = ["session.opened", "session.closed", "session.flagged", "contractor.updated"];
 
 export function LiveDashboard({ initial }: { initial: DashboardData }) {
   const [data, setData] = useState<DashboardData>(initial);
@@ -77,17 +79,13 @@ export function LiveDashboard({ initial }: { initial: DashboardData }) {
     }
   }, []);
 
-  useEffect(() => {
-    const es = new EventSource("/api/events/stream");
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    const onAny = () => refresh();
-    es.addEventListener("session.opened", onAny);
-    es.addEventListener("session.closed", onAny);
-    es.addEventListener("session.flagged", onAny);
-    es.addEventListener("contractor.updated", onAny);
-    return () => es.close();
-  }, [refresh]);
+  useRetryingEventSource({
+    url: "/api/events/stream",
+    eventNames: STREAM_EVENTS,
+    onEvent: refresh,
+    onConnectionChange: setConnected,
+    retryMs: 10_000,
+  });
 
   useEffect(() => {
     void probeLatency();

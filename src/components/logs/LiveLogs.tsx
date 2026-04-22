@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -8,6 +8,7 @@ import { ExpandModal } from "@/components/ui/ExpandModal";
 import { Field, Input } from "@/components/ui/Input";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/format";
+import { useRetryingEventSource } from "@/lib/useRetryingEventSource";
 
 type LogRow = {
   id: number;
@@ -70,6 +71,13 @@ type WebhookCapture = {
   capturedAtLogLevel: string;
   payload: unknown;
 };
+const STREAM_EVENTS = [
+  "session.opened",
+  "session.closed",
+  "session.flagged",
+  "contractor.updated",
+  "log.created",
+];
 
 export function LiveLogs({ initial }: { initial: LogsPageData }) {
   const [data, setData] = useState<LogsPageData>(initial);
@@ -81,8 +89,11 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "err">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [clearButtonState, setClearButtonState] = useState<"idle" | "confirm" | "success">("idle");
   const [clearError, setClearError] = useState<string | null>(null);
   const [showFullWebhook, setShowFullWebhook] = useState(false);
+  const clearConfirmTimeoutRef = useRef<number | null>(null);
+  const clearSuccessTimeoutRef = useRef<number | null>(null);
 
   const refreshLogs = useCallback(async (page = data.page) => {
     try {
@@ -117,18 +128,13 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
     }
   }, []);
 
-  useEffect(() => {
-    const es = new EventSource("/api/events/stream");
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    const onAny = () => refreshLogs();
-    es.addEventListener("session.opened", onAny);
-    es.addEventListener("session.closed", onAny);
-    es.addEventListener("session.flagged", onAny);
-    es.addEventListener("contractor.updated", onAny);
-    es.addEventListener("log.created", onAny);
-    return () => es.close();
-  }, [refreshLogs]);
+  useRetryingEventSource({
+    url: "/api/events/stream",
+    eventNames: STREAM_EVENTS,
+    onEvent: refreshLogs,
+    onConnectionChange: setConnected,
+    retryMs: 10_000,
+  });
 
   useEffect(() => {
     void probeLatency();
@@ -155,6 +161,17 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
   useEffect(() => {
     setShowFullWebhook(false);
   }, [selectedLog?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (clearConfirmTimeoutRef.current != null) {
+        window.clearTimeout(clearConfirmTimeoutRef.current);
+      }
+      if (clearSuccessTimeoutRef.current != null) {
+        window.clearTimeout(clearSuccessTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function startEditDevice(row: LogRow) {
     if (!row.device_id) return;
@@ -189,17 +206,16 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
   }
 
   async function clearAllLogs() {
-    const ok = window.confirm("Clear all audit log entries?");
-    if (!ok) return;
-
     setClearing(true);
     setClearError(null);
     try {
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
       const res = await fetch("/api/logs", {
         method: "DELETE",
       });
       if (!res.ok) {
         setClearError((await res.text()) || "Failed to clear logs");
+        setClearButtonState("idle");
         setClearing(false);
         return;
       }
@@ -212,33 +228,56 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
         page: 1,
         logSizeBytes: 0,
       }));
-      await refreshLogs(1);
+      setClearButtonState("success");
+      if (clearSuccessTimeoutRef.current != null) {
+        window.clearTimeout(clearSuccessTimeoutRef.current);
+      }
+      clearSuccessTimeoutRef.current = window.setTimeout(() => {
+        setClearButtonState("idle");
+      }, 2500);
+      void refreshLogs(1);
     } catch {
       setClearError("Request failed");
+      setClearButtonState("idle");
     } finally {
       setClearing(false);
     }
   }
 
+  function handleClearButtonClick() {
+    if (clearing) return;
+
+    setClearError(null);
+    if (clearButtonState === "idle") {
+      setClearButtonState("confirm");
+      if (clearConfirmTimeoutRef.current != null) {
+        window.clearTimeout(clearConfirmTimeoutRef.current);
+      }
+      clearConfirmTimeoutRef.current = window.setTimeout(() => {
+        setClearButtonState("idle");
+      }, 4000);
+      return;
+    }
+
+    if (clearButtonState === "confirm") {
+      if (clearConfirmTimeoutRef.current != null) {
+        window.clearTimeout(clearConfirmTimeoutRef.current);
+        clearConfirmTimeoutRef.current = null;
+      }
+      void clearAllLogs();
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Logs</h1>
           <p className="text-sm text-[var(--fg-muted)]">
             Live operational audit log for webhooks, auth, API calls, and session actions.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={() => void clearAllLogs()}
-            disabled={clearing}
-          >
-            {clearing ? "Clearing…" : "Clear logs"}
-          </Button>
+        <div className="flex items-center gap-2 self-start sm:gap-3 sm:self-auto">
           <Badge tone={connected ? "success" : "neutral"}>
             {connected
               ? latencyMs == null
@@ -301,7 +340,27 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <CardTitle>Recent activity</CardTitle>
-            <Badge tone="neutral">{formatBytes(data.logSizeBytes)}</Badge>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={clearing || clearButtonState === "success" ? "secondary" : "danger"}
+                size="sm"
+                className="!h-5 !rounded-full !px-2 !text-[11px] !leading-none !transition-none"
+                onClick={handleClearButtonClick}
+                disabled={clearing}
+              >
+                <span className="relative -top-px">
+                  {clearing
+                    ? "Clearing…"
+                    : clearButtonState === "confirm"
+                      ? "Are you sure?"
+                      : clearButtonState === "success"
+                        ? "Cleared"
+                        : "Clear logs"}
+                </span>
+              </Button>
+              <Badge tone="neutral">{formatBytes(data.logSizeBytes)}</Badge>
+            </div>
           </div>
         </CardHeader>
         <CardBody className="p-0">

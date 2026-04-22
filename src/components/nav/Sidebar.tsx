@@ -56,10 +56,10 @@ export function Sidebar({ username }: { username: string }) {
     <>
       {/* Mobile top bar */}
       <header className="md:hidden sticky top-0 z-50 flex items-center justify-between px-4 h-14 border-b bg-[var(--bg-elevated)]">
-        <div className="flex items-center gap-2">
+        <Link href="/dashboard" className="flex items-center gap-2" aria-label="Go to dashboard">
           <BrandMark className="h-7 w-7 rounded-md" iconClassName="h-4 w-4" />
           <span className="font-semibold">{APP_SHORT_NAME}</span>
-        </div>
+        </Link>
         <button
           type="button"
           aria-label="Toggle navigation"
@@ -124,10 +124,14 @@ export function Sidebar({ username }: { username: string }) {
           "hidden md:block md:w-64 md:shrink-0 md:border-r md:h-dvh md:sticky md:top-0 bg-[var(--bg-elevated)]"
         )}
       >
-        <div className="hidden md:flex items-center gap-2 px-5 h-14 border-b">
+        <Link
+          href="/dashboard"
+          className="hidden md:flex items-center gap-2 px-5 h-14 border-b"
+          aria-label="Go to dashboard"
+        >
           <BrandMark className="h-7 w-7 rounded-md" iconClassName="h-4 w-4" />
           <span className="font-semibold">{APP_SHORT_NAME}</span>
-        </div>
+        </Link>
         <nav className="p-3 flex flex-col gap-1">
           {nav.map(({ href, label, Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/");

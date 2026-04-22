@@ -9,8 +9,10 @@ import { ExpandModal } from "@/components/ui/ExpandModal";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import type { EventRow, EventsPageData, SessionListRow } from "@/lib/events-page";
 import { formatDateTime, formatDuration } from "@/lib/format";
+import { useRetryingEventSource } from "@/lib/useRetryingEventSource";
 
 const PAGE_SIZE = 10;
+const STREAM_EVENTS = ["session.opened", "session.closed", "session.flagged", "contractor.updated"];
 
 function formatSource(source: string | null | undefined) {
   const raw = (source ?? "").trim();
@@ -294,17 +296,13 @@ export function LiveEvents({ initial }: { initial: EventsPageData }) {
     }
   }, []);
 
-  useEffect(() => {
-    const es = new EventSource("/api/events/stream");
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    const onAny = () => refresh();
-    es.addEventListener("session.opened", onAny);
-    es.addEventListener("session.closed", onAny);
-    es.addEventListener("session.flagged", onAny);
-    es.addEventListener("contractor.updated", onAny);
-    return () => es.close();
-  }, [refresh]);
+  useRetryingEventSource({
+    url: "/api/events/stream",
+    eventNames: STREAM_EVENTS,
+    onEvent: refresh,
+    onConnectionChange: setConnected,
+    retryMs: 10_000,
+  });
 
   useEffect(() => {
     void probeLatency();
