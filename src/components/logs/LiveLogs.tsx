@@ -8,46 +8,12 @@ import { ExpandModal } from "@/components/ui/ExpandModal";
 import { Field, Input } from "@/components/ui/Input";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/format";
+import type {
+  ActiveApiStream,
+  LogRow,
+  LogsPageData,
+} from "@/lib/shared-types";
 import { useRetryingEventSource } from "@/lib/useRetryingEventSource";
-
-type LogRow = {
-  id: number;
-  occurred_at: string;
-  level: "debug" | "info" | "error";
-  category: string;
-  action: string;
-  message: string;
-  ip: string | null;
-  method: string | null;
-  path: string | null;
-  actor: string | null;
-  contractor_id: number | null;
-  plate: string | null;
-  device_id: string | null;
-  device_name: string | null;
-  event_id: string | null;
-  details_json: string | null;
-};
-
-type ActiveApiStream = {
-  id: string;
-  actor: string;
-  connected_at: string;
-  ip: string | null;
-  ip_source: string | null;
-  forwarded_chain: string[];
-  user_agent: string | null;
-  path: string;
-};
-
-type LogsPageData = {
-  rows: LogRow[];
-  count: number;
-  page: number;
-  pageSize: number;
-  logSizeBytes: number;
-  streams: ActiveApiStream[];
-};
 
 type DetailItem = {
   label: string;
@@ -209,7 +175,7 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
     setClearing(true);
     setClearError(null);
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 700));
       const res = await fetch("/api/logs", {
         method: "DELETE",
       });
@@ -314,22 +280,25 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
                 </TR>
               </THead>
               <tbody>
-                {data.streams.map((stream) => (
-                  <TR key={stream.id}>
-                    <TD className="whitespace-nowrap">{formatDateTime(stream.connected_at)}</TD>
-                    <TD className="font-mono text-xs">{stream.actor}</TD>
-                    <TD>
-                      <div className="font-mono text-xs">{stream.ip ?? "—"}</div>
-                      <div className="text-xs text-[var(--fg-muted)]">{stream.ip_source ?? "—"}</div>
-                    </TD>
-                    <TD className="max-w-[18rem] truncate font-mono text-xs" title={formatForwardedChain(stream)}>
-                      {formatForwardedChain(stream)}
-                    </TD>
-                    <TD className="max-w-[18rem] truncate text-xs" title={stream.user_agent ?? stream.path}>
-                      {stream.user_agent ?? stream.path}
-                    </TD>
-                  </TR>
-                ))}
+                {data.streams.map((stream) => {
+                  const forwardedChain = formatForwardedChain(stream);
+                  return (
+                    <TR key={stream.id}>
+                      <TD className="whitespace-nowrap">{formatDateTime(stream.connected_at)}</TD>
+                      <TD className="font-mono text-xs">{stream.actor}</TD>
+                      <TD>
+                        <div className="font-mono text-xs">{stream.ip ?? "—"}</div>
+                        <div className="text-xs text-[var(--fg-muted)]">{stream.ip_source ?? "—"}</div>
+                      </TD>
+                      <TD className="max-w-[18rem] truncate font-mono text-xs" title={forwardedChain}>
+                        {forwardedChain}
+                      </TD>
+                      <TD className="max-w-[18rem] truncate text-xs" title={stream.user_agent ?? stream.path}>
+                        {stream.user_agent ?? stream.path}
+                      </TD>
+                    </TR>
+                  );
+                })}
               </tbody>
             </Table>
           )}
@@ -702,8 +671,8 @@ function parseDetailsJson(raw: string | null): ParsedDetails {
   if (!raw) return { kind: "empty" };
   try {
     let parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const obj = parsed as Record<string, unknown>;
+    if (isObjectRecord(parsed)) {
+      const obj = parsed;
       if ("_webhook_capture" in obj) {
         const next = { ...obj };
         delete next._webhook_capture;
@@ -711,15 +680,15 @@ function parseDetailsJson(raw: string | null): ParsedDetails {
       }
     }
 
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const obj = parsed as Record<string, unknown>;
+    if (isObjectRecord(parsed)) {
+      const obj = parsed;
       if (Object.keys(obj).length === 0) {
         return { kind: "empty" };
       }
       const source = firstString(obj.source, obj.via, obj.origin) ?? "—";
       const eventId =
         firstString(obj.event_id, obj.eventId, obj.id) ??
-        firstString((obj.event as Record<string, unknown> | undefined)?.id) ??
+        firstString(isObjectRecord(obj.event) ? obj.event.id : undefined) ??
         "—";
       const emittedRaw = obj.emitted ?? obj.type;
       const emittedList = normalizeToStringList(emittedRaw);
@@ -732,15 +701,11 @@ function parseDetailsJson(raw: string | null): ParsedDetails {
       }
     }
 
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      Array.isArray((parsed as { changes?: unknown }).changes)
-    ) {
-      const changesRaw = (parsed as { changes: unknown[] }).changes;
+    if (isChangesContainer(parsed)) {
+      const changesRaw = parsed.changes;
       const changes = changesRaw
         .filter((entry): entry is { field?: unknown; before?: unknown; after?: unknown } =>
-          !!entry && typeof entry === "object"
+          isObjectRecord(entry)
         )
         .map((entry) => ({
           field: String(entry.field ?? "value"),
@@ -788,7 +753,7 @@ function normalizeToStringList(value: unknown): string[] {
 }
 
 function flattenDetails(value: unknown, path = ""): Array<{ path: string; value: unknown }> {
-  if (value === null || typeof value !== "object") {
+  if (!isObjectRecord(value)) {
     return [{ path: path || "value", value }];
   }
 
@@ -803,7 +768,7 @@ function flattenDetails(value: unknown, path = ""): Array<{ path: string; value:
     );
   }
 
-  const entries = Object.entries(value as Record<string, unknown>);
+  const entries = Object.entries(value);
   if (entries.length === 0) return [{ path: path || "value", value: "{}" }];
 
   return entries.flatMap(([key, nested]) =>
@@ -871,11 +836,11 @@ function extractWebhookCapture(raw: string | null): WebhookCapture | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const root = parsed as Record<string, unknown>;
+    if (!isObjectRecord(parsed)) return null;
+    const root = parsed;
     const capture = root._webhook_capture;
-    if (!capture || typeof capture !== "object" || Array.isArray(capture)) return null;
-    const captureObj = capture as Record<string, unknown>;
+    if (!isObjectRecord(capture)) return null;
+    const captureObj = capture;
     const level = String(captureObj.captured_at_log_level ?? "").trim().toLowerCase();
     if (level !== "debug") return null;
     if (!("payload" in captureObj)) return null;
@@ -895,6 +860,14 @@ function formatWebhookPayload(payload: unknown): string {
   } catch {
     return String(payload);
   }
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isChangesContainer(value: unknown): value is { changes: unknown[] } {
+  return isObjectRecord(value) && Array.isArray(value.changes);
 }
 
 function isWebhookLog(row: LogRow): boolean {

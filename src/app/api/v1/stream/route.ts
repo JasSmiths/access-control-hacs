@@ -2,8 +2,9 @@ import { registerApiStream, unregisterApiStream } from "@/lib/api-streams";
 import { loadDashboard } from "@/lib/dashboard";
 import { verifyApiKey } from "@/lib/api-keys";
 import { auditLog } from "@/lib/audit";
-import { getBus } from "@/lib/events-bus";
+import { offBusEvent, onBusEvent } from "@/lib/events-bus";
 import { getLatestGateSignal } from "@/lib/gate-signals";
+import type { BusEvent, JsonValue } from "@/lib/shared-types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,7 +61,6 @@ export async function GET(request: Request) {
   }
 
   const encoder = new TextEncoder();
-  const bus = getBus();
   const actor = `api_key:${key.key_prefix}`;
   const streamId = registerApiStream(request, actor, "/api/v1/stream");
 
@@ -78,12 +78,14 @@ export async function GET(request: Request) {
     start(controller) {
       let closed = false;
       const connectedAt = new Date();
+      let ping: ReturnType<typeof setInterval> | null = null;
+      let listener: ((e: BusEvent) => void) | null = null;
 
       const closeStream = (reason: string) => {
         if (closed) return;
         closed = true;
-        clearInterval(ping);
-        bus.off("evt", listener);
+        if (ping) clearInterval(ping);
+        if (listener) offBusEvent(listener);
         const activeStream = unregisterApiStream(streamId);
         auditLog({
           level: "info",
@@ -109,7 +111,7 @@ export async function GET(request: Request) {
         }
       };
 
-      const send = (eventName: string, data: unknown) => {
+      const send = (eventName: string, data: JsonValue) => {
         if (closed) return;
         try {
           const chunk = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -142,10 +144,10 @@ export async function GET(request: Request) {
       controller.enqueue(encoder.encode(": connected\n\n"));
       sendSnapshot();
 
-      const listener = () => sendSnapshot();
-      bus.on("evt", listener);
+      listener = () => sendSnapshot();
+      onBusEvent(listener);
 
-      const ping = setInterval(() => {
+      ping = setInterval(() => {
         if (closed) return;
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));

@@ -6,6 +6,7 @@ import {
   updateAdminPassword,
 } from "@/lib/auth";
 import { auditLog } from "@/lib/audit";
+import type { JsonObject } from "@/lib/shared-types";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,14 @@ export async function PATCH(
 
   if (!changed) return new Response("No changes provided", { status: 400 });
 
+  const details: JsonObject = {
+    userId,
+    passwordReset: typeof password === "string",
+  };
+  if (typeof active === "boolean") {
+    details.active = active;
+  }
+
   auditLog({
     level: "info",
     category: "auth",
@@ -71,11 +80,7 @@ export async function PATCH(
     message: `Admin user ${target.username} updated by ${session.username}.`,
     request,
     actor: session.username,
-    details: {
-      userId,
-      active: typeof active === "boolean" ? active : undefined,
-      passwordReset: typeof password === "string",
-    },
+    details,
   });
 
   return Response.json({ ok: true });

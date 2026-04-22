@@ -1,32 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-
-export type LogRow = {
-  id: number;
-  occurred_at: string;
-  level: "debug" | "info" | "error";
-  category: string;
-  action: string;
-  message: string;
-  ip: string | null;
-  method: string | null;
-  path: string | null;
-  actor: string | null;
-  contractor_id: number | null;
-  plate: string | null;
-  device_id: string | null;
-  device_name: string | null;
-  event_id: string | null;
-  details_json: string | null;
-};
-
-export type LogsPageResult = {
-  rows: LogRow[];
-  count: number;
-  page: number;
-  pageSize: number;
-  logSizeBytes: number;
-};
+import type { LogRow, LogsPageResult } from "./shared-types";
 
 export function loadLogs(limit = 200): LogRow[] {
   const safeLimit = Math.min(1000, Math.max(1, limit));

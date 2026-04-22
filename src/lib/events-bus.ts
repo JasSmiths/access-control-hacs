@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { BusEvent, BusEventName, BusEventPayloadMap } from "./shared-types";
 
 declare global {
   var __crestHouseAccessBus: EventEmitter | undefined;
@@ -14,13 +15,18 @@ export function getBus(): EventEmitter {
   return globalThis.__crestHouseAccessBus;
 }
 
-export type BusEventName =
-  | "session.opened"
-  | "session.closed"
-  | "session.flagged"
-  | "contractor.updated"
-  | "log.created";
+export function emit<Name extends BusEventName>(
+  name: Name,
+  data: BusEventPayloadMap[Name]
+) {
+  const event = { name, data } as BusEvent;
+  getBus().emit("evt", event);
+}
 
-export function emit(name: BusEventName, data: unknown) {
-  getBus().emit("evt", { name, data });
+export function onBusEvent(listener: (event: BusEvent) => void) {
+  getBus().on("evt", listener);
+}
+
+export function offBusEvent(listener: (event: BusEvent) => void) {
+  getBus().off("evt", listener);
 }

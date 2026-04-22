@@ -2,8 +2,9 @@ import "server-only";
 import { emit } from "./events-bus";
 import { getDb } from "./db";
 import { getClientIp, getPathname } from "./request";
+import type { LogLevel } from "./shared-types";
 
-type AuditLevel = "debug" | "info" | "error";
+type AuditLevel = LogLevel;
 
 type AuditInput = {
   level?: AuditLevel;
@@ -37,8 +38,8 @@ export function getConfiguredAuditLogLevel(): "errors" | "debug" {
   try {
     const row = getDb()
       .prepare("SELECT log_level FROM settings WHERE id = 1")
-      .get() as { log_level?: unknown } | undefined;
-    const value = String(row?.log_level ?? "").trim().toLowerCase();
+      .get() as { log_level?: string | null } | undefined;
+    const value = row?.log_level?.trim().toLowerCase() ?? "";
     if (value === "errors" || value === "debug") return value;
   } catch {
     // Fallback for bootstrap or pre-migration states.

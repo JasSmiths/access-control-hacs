@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth";
-import { getBus } from "@/lib/events-bus";
+import { offBusEvent, onBusEvent } from "@/lib/events-bus";
+import type { BusEvent, BusEventName, BusEventPayloadMap } from "@/lib/shared-types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,13 +9,15 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return new Response("Unauthorized", { status: 401 });
 
-  const bus = getBus();
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false;
-      const send = (name: string, data: unknown) => {
+      const send = <Name extends BusEventName>(
+        name: Name,
+        data: BusEventPayloadMap[Name]
+      ) => {
         if (closed) return;
         const chunk = `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
         try {
@@ -27,8 +30,8 @@ export async function GET(request: Request) {
       // initial comment to open the stream on some proxies
       controller.enqueue(encoder.encode(": connected\n\n"));
 
-      const listener = (e: { name: string; data: unknown }) => send(e.name, e.data);
-      bus.on("evt", listener);
+      const listener = (e: BusEvent) => send(e.name, e.data);
+      onBusEvent(listener);
 
       // periodic keep-alive
       const ping = setInterval(() => {
@@ -44,7 +47,7 @@ export async function GET(request: Request) {
         if (closed) return;
         closed = true;
         clearInterval(ping);
-        bus.off("evt", listener);
+        offBusEvent(listener);
         try {
           controller.close();
         } catch {

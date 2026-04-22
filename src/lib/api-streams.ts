@@ -2,17 +2,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { getClientIpDetails } from "./request";
-
-export type ActiveApiStream = {
-  id: string;
-  actor: string;
-  connected_at: string;
-  ip: string | null;
-  ip_source: string | null;
-  forwarded_chain: string[];
-  user_agent: string | null;
-  path: string;
-};
+import type { ActiveApiStream } from "./shared-types";
 
 declare global {
   var __crestHouseAccessApiStreams: Map<string, ActiveApiStream> | undefined;

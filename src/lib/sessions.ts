@@ -4,6 +4,7 @@ import { getDb } from "./db";
 import { emit } from "./events-bus";
 import { checkAccessControl, sendNotification } from "./notifications";
 import { getSettings } from "./settings";
+import type { BusEvent } from "./shared-types";
 
 export type SessionRow = {
   id: number;
@@ -32,10 +33,25 @@ export type ContractorRow = {
   updated_at: string;
 };
 
+function parseEventTimestamp(raw: string): number {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+    ? raw.replace(" ", "T") + "Z"
+    : raw;
+  return Date.parse(normalized);
+}
+
 function formatExitDuration(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
-  const h = Math.floor(s / 3600);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) {
+    const parts = [`${d}d`, `${h}hrs`];
+    if (m > 0) parts.push(`${m}m`);
+    else if (sec > 0) parts.push(`${sec}s`);
+    return parts.join(" ");
+  }
   if (h <= 0) return `${m}m`;
   if (m <= 0) return `${h}h`;
   return `${h}h ${m}m`;
@@ -69,7 +85,7 @@ export function ingestEvent(args: {
   source?: string;
   ingestKey?: string | null;
   contractor?: ContractorRow;
-}): { eventId: number; emits: Array<{ name: string; data: unknown }> } {
+}): { eventId: number; emits: BusEvent[] } {
   const db = getDb();
 
   // Load contractor for access-control check if not provided
@@ -79,7 +95,7 @@ export function ingestEvent(args: {
       .prepare("SELECT * FROM contractors WHERE id = ?")
       .get(args.contractorId) as ContractorRow | undefined);
 
-  const emits: Array<{ name: string; data: unknown }> = [];
+  const emits: BusEvent[] = [];
   const notifQueue: Array<() => Promise<void>> = [];
 
   const run = db.transaction(() => {
@@ -191,9 +207,35 @@ export function ingestEvent(args: {
             startedAt: args.occurredAt,
           },
         });
+        const previousExit = db
+          .prepare(
+            `SELECT occurred_at
+               FROM gate_events
+              WHERE contractor_id = ?
+                AND event_type = 'exit'
+                AND id < ?
+              ORDER BY id DESC
+              LIMIT 1`
+          )
+          .get(args.contractorId, eventId) as { occurred_at: string } | undefined;
+
+        let arrivedBody = `[${notifyPerson(contractor).type}] ${notifyPerson(contractor).name} (${args.plateRaw}) arrived.`;
+        if (previousExit) {
+          const previousExitMs = parseEventTimestamp(previousExit.occurred_at);
+          const currentEntryMs = parseEventTimestamp(args.occurredAt);
+          const offsiteSeconds = Math.round((currentEntryMs - previousExitMs) / 1000);
+          if (
+            Number.isFinite(previousExitMs) &&
+            Number.isFinite(currentEntryMs) &&
+            offsiteSeconds > 0
+          ) {
+            arrivedBody = `[${notifyPerson(contractor).type}] ${notifyPerson(contractor).name} (${args.plateRaw}) arrived after ${formatExitDuration(offsiteSeconds)} off site.`;
+          }
+        }
+
         notifQueue.push(() =>
           maybeNotify("arrived", {
-            body: `[${notifyPerson(contractor).type}] ${notifyPerson(contractor).name} (${args.plateRaw}) arrived.`,
+            body: arrivedBody,
             type: "info",
           })
         );
@@ -317,7 +359,7 @@ export function ingestEvent(args: {
 
   // Emit outside the DB transaction so listeners see committed state.
   for (const e of emits) {
-    emit(e.name as Parameters<typeof emit>[0], e.data);
+    emit(e.name, e.data);
   }
 
   // Fire notifications asynchronously (best-effort)
