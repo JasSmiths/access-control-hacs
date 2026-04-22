@@ -34,6 +34,7 @@ export type DashboardData = {
     source?: string | null;
     next_enter_at?: string | null;
     previous_exit_at?: string | null;
+    previous_enter_at?: string | null;
   }>;
 };
 
@@ -146,7 +147,14 @@ export function loadDashboard(): DashboardData {
                  WHERE e3.contractor_id = e.contractor_id
                    AND e3.event_type = 'exit'
                    AND e3.occurred_at < e.occurred_at
-              ) AS previous_exit_at
+              ) AS previous_exit_at,
+              (
+                SELECT MAX(e4.occurred_at)
+                  FROM gate_events e4
+                 WHERE e4.contractor_id = e.contractor_id
+                   AND e4.event_type = 'enter'
+                   AND e4.occurred_at < e.occurred_at
+              ) AS previous_enter_at
          FROM gate_events e
          JOIN contractors c ON c.id = e.contractor_id
         ORDER BY e.occurred_at DESC

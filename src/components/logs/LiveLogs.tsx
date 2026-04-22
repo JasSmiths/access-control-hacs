@@ -49,6 +49,7 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
   const [data, setData] = useState<LogsPageData>(initial);
   const [connected, setConnected] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [transferRates, setTransferRates] = useState({ inBps: 0, outBps: 0 });
   const [selectedLog, setSelectedLog] = useState<LogRow | null>(null);
   const [editingDevice, setEditingDevice] = useState<{ id: string; current: string } | null>(null);
   const [deviceName, setDeviceName] = useState("");
@@ -57,9 +58,16 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
   const [clearing, setClearing] = useState(false);
   const [clearButtonState, setClearButtonState] = useState<"idle" | "confirm" | "success">("idle");
   const [clearError, setClearError] = useState<string | null>(null);
+  const [transferTestState, setTransferTestState] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [transferTestMessage, setTransferTestMessage] = useState<string | null>(null);
+  const [transferInboundKb, setTransferInboundKb] = useState("256");
+  const [transferOutboundKb, setTransferOutboundKb] = useState("1024");
   const [showFullWebhook, setShowFullWebhook] = useState(false);
   const clearConfirmTimeoutRef = useRef<number | null>(null);
   const clearSuccessTimeoutRef = useRef<number | null>(null);
+  const streamSamplesRef = useRef(
+    new Map<string, { bytesIn: number; bytesOut: number; sampledAt: number }>()
+  );
 
   const refreshLogs = useCallback(async (page = data.page) => {
     try {
@@ -77,6 +85,30 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
       const r = await fetch("/api/logs/streams", { cache: "no-store" });
       if (!r.ok) return;
       const payload = (await r.json()) as { streams: ActiveApiStream[] };
+      const sampledAt = Date.now();
+      let inBps = 0;
+      let outBps = 0;
+      const nextSamples = new Map<string, { bytesIn: number; bytesOut: number; sampledAt: number }>();
+      for (const stream of payload.streams) {
+        const previous = streamSamplesRef.current.get(stream.id);
+        if (previous) {
+          const elapsedSeconds = (sampledAt - previous.sampledAt) / 1000;
+          if (elapsedSeconds > 0) {
+            inBps += Math.max(0, ((stream.bytes_in - previous.bytesIn) * 8) / elapsedSeconds);
+            outBps += Math.max(0, ((stream.bytes_out - previous.bytesOut) * 8) / elapsedSeconds);
+          }
+        }
+        nextSamples.set(stream.id, {
+          bytesIn: stream.bytes_in,
+          bytesOut: stream.bytes_out,
+          sampledAt,
+        });
+      }
+      streamSamplesRef.current = nextSamples;
+      setTransferRates({
+        inBps,
+        outBps,
+      });
       setData((current) => ({ ...current, streams: payload.streams }));
     } catch {
       // ignore
@@ -106,7 +138,7 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
     void probeLatency();
     void refreshStreams();
     const latencyId = window.setInterval(() => void probeLatency(), 15000);
-    const streamsId = window.setInterval(() => void refreshStreams(), 15000);
+    const streamsId = window.setInterval(() => void refreshStreams(), 2000);
     return () => {
       window.clearInterval(latencyId);
       window.clearInterval(streamsId);
@@ -234,6 +266,51 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
     }
   }
 
+  async function runTransferTest() {
+    if (transferTestState === "running") return;
+    setTransferTestState("running");
+    setTransferTestMessage(null);
+    try {
+      const inboundBytes = parseKilobytesInput(transferInboundKb, 256);
+      const outboundBytes = parseKilobytesInput(transferOutboundKb, 1024);
+      const inboundPayload = "x".repeat(Math.min(inboundBytes, 5 * 1024 * 1024));
+      const res = await fetch("/api/logs/streams/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inboundBytes,
+          outboundBytes,
+          chunks: 12,
+          inboundPayload,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { reason?: string } | null;
+        if (body?.reason === "no_active_streams") {
+          setTransferTestMessage("No active API streams to test. Connect a stream first.");
+        } else {
+          setTransferTestMessage("Transfer test failed.");
+        }
+        setTransferTestState("error");
+        return;
+      }
+      const payload = (await res.json()) as {
+        streams: number;
+        totalBytesPerStream: number;
+        inboundBytesTotal: number;
+      };
+      setTransferTestMessage(
+        `Transfer test ran with inbound ${formatBytesShort(payload.inboundBytesTotal)} total and outbound ${formatBytesShort(payload.totalBytesPerStream)} per stream across ${payload.streams} active stream${payload.streams === 1 ? "" : "s"}.`
+      );
+      setTransferTestState("success");
+      window.setTimeout(() => setTransferTestState("idle"), 3000);
+      void refreshStreams();
+    } catch {
+      setTransferTestMessage("Transfer test request failed.");
+      setTransferTestState("error");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -260,47 +337,112 @@ export function LiveLogs({ initial }: { initial: LogsPageData }) {
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <CardTitle>Currently Connected API Streams</CardTitle>
-            <Badge tone={data.streams.length > 0 ? "accent" : "neutral"}>
-              {data.streams.length} active
-            </Badge>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 text-[11px] text-[var(--fg-muted)]">
+                In KB
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={transferInboundKb}
+                  onChange={(e) => setTransferInboundKb(e.target.value)}
+                  className="h-5 w-20 rounded-full border bg-[var(--bg-elevated)] px-2 text-[11px] leading-none text-[var(--fg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[11px] text-[var(--fg-muted)]">
+                Out KB
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={transferOutboundKb}
+                  onChange={(e) => setTransferOutboundKb(e.target.value)}
+                  className="h-5 w-20 rounded-full border bg-[var(--bg-elevated)] px-2 text-[11px] leading-none text-[var(--fg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                />
+              </label>
+              <Button
+                type="button"
+                variant={transferTestState === "success" ? "secondary" : "danger"}
+                size="sm"
+                className="!h-5 !rounded-full !px-2 !text-[11px] !leading-none !transition-none"
+                onClick={() => void runTransferTest()}
+                disabled={transferTestState === "running"}
+              >
+                <span className="relative -top-px">
+                  {transferTestState === "running"
+                    ? "Running test…"
+                    : transferTestState === "success"
+                      ? "Test sent"
+                      : "Run transfer test"}
+                </span>
+              </Button>
+              <Badge tone={data.streams.length > 0 ? "accent" : "neutral"}>
+                {data.streams.length} active
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardBody className="p-0">
+          {transferTestMessage ? (
+            <div
+              className={`border-b px-4 py-2 text-xs ${
+                transferTestState === "error" ? "text-[var(--danger)]" : "text-[var(--fg-muted)]"
+              }`}
+            >
+              {transferTestMessage}
+            </div>
+          ) : null}
           {data.streams.length === 0 ? (
             <div className="p-6 text-sm text-[var(--fg-muted)]">No active API streams.</div>
           ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Connected</TH>
-                  <TH>API Key</TH>
-                  <TH>Source IP</TH>
-                  <TH>Forwarded Via</TH>
-                  <TH>Client</TH>
-                </TR>
-              </THead>
-              <tbody>
-                {data.streams.map((stream) => {
-                  const forwardedChain = formatForwardedChain(stream);
-                  return (
-                    <TR key={stream.id}>
-                      <TD className="whitespace-nowrap">{formatDateTime(stream.connected_at)}</TD>
-                      <TD className="font-mono text-xs">{stream.actor}</TD>
-                      <TD>
-                        <div className="font-mono text-xs">{stream.ip ?? "—"}</div>
-                        <div className="text-xs text-[var(--fg-muted)]">{stream.ip_source ?? "—"}</div>
-                      </TD>
-                      <TD className="max-w-[18rem] truncate font-mono text-xs" title={forwardedChain}>
-                        {forwardedChain}
-                      </TD>
-                      <TD className="max-w-[18rem] truncate text-xs" title={stream.user_agent ?? stream.path}>
-                        {stream.user_agent ?? stream.path}
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </tbody>
-            </Table>
+            <>
+              <div className="grid gap-2 border-b p-4 sm:grid-cols-2">
+                <div className="rounded-lg border bg-[var(--bg)] p-3">
+                  <p className="text-xs text-[var(--fg-muted)]">Inbound</p>
+                  <p className="text-sm font-semibold text-[var(--fg)]">
+                    {formatBitsPerSecond(transferRates.inBps)}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-[var(--bg)] p-3">
+                  <p className="text-xs text-[var(--fg-muted)]">Outbound</p>
+                  <p className="text-sm font-semibold text-[var(--fg)]">
+                    {formatBitsPerSecond(transferRates.outBps)}
+                  </p>
+                </div>
+              </div>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Connected</TH>
+                    <TH>API Key</TH>
+                    <TH>Source IP</TH>
+                    <TH>Forwarded Via</TH>
+                    <TH>Client</TH>
+                  </TR>
+                </THead>
+                <tbody>
+                  {data.streams.map((stream) => {
+                    const forwardedChain = formatForwardedChain(stream);
+                    return (
+                      <TR key={stream.id}>
+                        <TD className="whitespace-nowrap">{formatDateTime(stream.connected_at)}</TD>
+                        <TD className="font-mono text-xs">{stream.actor}</TD>
+                        <TD>
+                          <div className="font-mono text-xs">{stream.ip ?? "—"}</div>
+                          <div className="text-xs text-[var(--fg-muted)]">{stream.ip_source ?? "—"}</div>
+                        </TD>
+                        <TD className="max-w-[18rem] truncate font-mono text-xs" title={forwardedChain}>
+                          {forwardedChain}
+                        </TD>
+                        <TD className="max-w-[18rem] truncate text-xs" title={stream.user_agent ?? stream.path}>
+                          {stream.user_agent ?? stream.path}
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </>
           )}
         </CardBody>
       </Card>
@@ -885,4 +1027,36 @@ function formatBytes(bytes: number): string {
   }
   const rounded = value >= 100 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
   return `Logs: ${rounded} ${units[unitIndex]}`;
+}
+
+function formatBitsPerSecond(bitsPerSecond: number): string {
+  if (!Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) return "0 bps";
+  const units = ["bps", "kbps", "mbps", "gbps", "tbps"];
+  let value = bitsPerSecond;
+  let unitIndex = 0;
+  while (value >= 1000 && unitIndex < units.length - 1) {
+    value /= 1000;
+    unitIndex += 1;
+  }
+  const rounded = value >= 100 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${rounded} ${units[unitIndex]}`;
+}
+
+function formatBytesShort(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const rounded = value >= 100 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${rounded} ${units[unitIndex]}`;
+}
+
+function parseKilobytesInput(raw: string, fallbackKb: number): number {
+  const parsed = Number(raw);
+  const safeKb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackKb;
+  return Math.max(1, Math.floor(safeKb * 1024));
 }

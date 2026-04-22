@@ -42,7 +42,7 @@ export function ChangePasswordCard() {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Change password</CardTitle>
       </CardHeader>
@@ -161,59 +161,62 @@ export function AdminUsersCard({
   }
 
   return (
-    <Card className="max-w-3xl">
+    <Card>
       <CardHeader>
         <CardTitle>Admin users</CardTitle>
       </CardHeader>
       <CardBody className="space-y-6">
-        <form onSubmit={createUser} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-          <Field label="Username">
-            <Input
-              required
-              minLength={3}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </Field>
-          <Field label="Password">
-            <Input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-          <Button type="submit" disabled={state === "saving"}>
-            {state === "saving" ? "Creating…" : "Add admin user"}
-          </Button>
-        </form>
+        <div className="rounded-lg border bg-[var(--bg)] p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--fg-muted)]">
+            Add administrator
+          </p>
+          <form
+            onSubmit={createUser}
+            className="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end"
+          >
+            <Field label="Username">
+              <Input
+                required
+                minLength={3}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </Field>
+            <Field label="Password">
+              <Input
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <Button type="submit" disabled={state === "saving"}>
+              {state === "saving" ? "Creating…" : "Add admin user"}
+            </Button>
+          </form>
+        </div>
 
-        <div className="space-y-3">
-          {users.map((user) => (
-            <div
-              key={user.id}
-              className="rounded-lg border p-3 space-y-3 bg-[var(--bg)]"
-            >
-              <div className="flex items-center justify-between gap-3">
+        <div className="overflow-hidden rounded-lg border">
+          <div className="hidden xl:grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] bg-[var(--bg)] px-4 py-2 text-xs font-medium uppercase tracking-wide text-[var(--fg-muted)]">
+            <div>User</div>
+            <div>Password reset</div>
+            <div>Actions</div>
+          </div>
+          <div className="divide-y">
+            {users.map((user) => (
+              <div
+                key={user.id}
+                className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:items-end"
+              >
                 <div>
-                  <div className="font-medium">{user.username}</div>
-                  <div className="text-xs text-[var(--fg-muted)]">
+                  <p className="text-sm font-medium text-[var(--fg)]">{user.username}</p>
+                  <p className="mt-1 text-xs text-[var(--fg-muted)]">
                     {user.active ? "Active" : "Inactive"} • Last login:{" "}
                     {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "Never"}
                     {user.id === currentUserId ? " • You" : ""}
-                  </div>
+                  </p>
                 </div>
-                <Button
-                  type="button"
-                  variant={user.active ? "secondary" : "primary"}
-                  disabled={busyId === user.id || user.id === currentUserId}
-                  onClick={() => setActive(user.id, !user.active)}
-                >
-                  {user.active ? "Deactivate" : "Activate"}
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <Field label="Reset password">
                   <Input
                     type="password"
@@ -228,16 +231,26 @@ export function AdminUsersCard({
                     placeholder="At least 8 characters"
                   />
                 </Field>
-                <Button
-                  type="button"
-                  disabled={busyId === user.id}
-                  onClick={() => resetPassword(user.id)}
-                >
-                  Reset password
-                </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={user.active ? "secondary" : "primary"}
+                    disabled={busyId === user.id || user.id === currentUserId}
+                    onClick={() => setActive(user.id, !user.active)}
+                  >
+                    {user.active ? "Deactivate" : "Activate"}
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={busyId === user.id}
+                    onClick={() => resetPassword(user.id)}
+                  >
+                    Reset password
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {error ? <div className="text-sm text-[var(--danger)]">{error}</div> : null}
@@ -263,7 +276,7 @@ export function WebhookCard({
     setTimeout(() => setCopied(null), 1500);
   }
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Webhook endpoint</CardTitle>
       </CardHeader>
@@ -310,7 +323,6 @@ export function WebhookCard({
 
 export function SiteSettingsCard({ initial }: { initial: SettingsRow }) {
   const [address, setAddress] = useState(initial.site_address ?? "");
-  const [logLevel, setLogLevel] = useState<SettingsRow["log_level"]>(initial.log_level ?? "debug");
   const [state, setState] = useState<"idle" | "saving" | "ok" | "err">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -321,7 +333,7 @@ export function SiteSettingsCard({ initial }: { initial: SettingsRow }) {
     const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ site_address: address || null, log_level: logLevel }),
+      body: JSON.stringify({ site_address: address || null }),
     });
     if (res.ok) {
       setState("ok");
@@ -332,7 +344,7 @@ export function SiteSettingsCard({ initial }: { initial: SettingsRow }) {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Site information</CardTitle>
       </CardHeader>
@@ -348,6 +360,50 @@ export function SiteSettingsCard({ initial }: { initial: SettingsRow }) {
               placeholder="e.g. 42 Acacia Avenue, Springfield"
             />
           </Field>
+          {error ? (
+            <div className="text-sm text-[var(--danger)]">{error}</div>
+          ) : null}
+          {state === "ok" ? (
+            <div className="text-sm text-[var(--success)]">Saved.</div>
+          ) : null}
+          <Button type="submit" disabled={state === "saving"}>
+            {state === "saving" ? "Saving…" : "Save"}
+          </Button>
+        </form>
+      </CardBody>
+    </Card>
+  );
+}
+
+export function LoggingSettingsCard({ initial }: { initial: SettingsRow }) {
+  const [logLevel, setLogLevel] = useState<SettingsRow["log_level"]>(initial.log_level ?? "debug");
+  const [state, setState] = useState<"idle" | "saving" | "ok" | "err">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setState("saving");
+    setError(null);
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ log_level: logLevel }),
+    });
+    if (res.ok) {
+      setState("ok");
+    } else {
+      setState("err");
+      setError((await res.text()) || "Failed");
+    }
+  }
+
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle>Logging</CardTitle>
+      </CardHeader>
+      <CardBody>
+        <form onSubmit={submit} className="space-y-4">
           <Field
             label="Log level"
             hint="Errors: store only error logs. Debug: store all logs."
@@ -459,7 +515,7 @@ export function AppRiseCard({ initial }: { initial: SettingsRow }) {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>AppRise notifications</CardTitle>
       </CardHeader>

@@ -17,6 +17,8 @@ export type ActiveApiStream = {
   forwarded_chain: string[];
   user_agent: string | null;
   path: string;
+  bytes_in: number;
+  bytes_out: number;
 };
 
 export type LogRow = {
@@ -73,6 +75,11 @@ export type BusEventPayloadMap = {
   };
   "log.created": {
     id: number;
+  };
+  "stream.transfer_test": {
+    id: string;
+    chunk_bytes: number;
+    chunks: number;
   };
 };
 

@@ -378,7 +378,13 @@ export function LiveEvents({ initial }: { initial: EventsPageData }) {
                       <TD className="font-medium">{s.contractor_name}</TD>
                       <TD>{formatDateTime(s.started_at)}</TD>
                       <TD>{s.ended_at ? formatDateTime(s.ended_at) : "—"}</TD>
-                      <TD>{formatDuration(s.duration_seconds)}</TD>
+                      <TD>
+                        {s.ended_at ? (
+                          formatElapsedWithDays(s.duration_seconds ?? 0)
+                        ) : (
+                          <ElapsedFrom from={s.started_at} />
+                        )}
+                      </TD>
                       <TD>
                         <Badge
                           tone={

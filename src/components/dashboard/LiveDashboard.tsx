@@ -34,6 +34,7 @@ export type DashboardData = {
     source?: string | null;
     next_enter_at?: string | null;
     previous_exit_at?: string | null;
+    previous_enter_at?: string | null;
   }>;
 };
 
@@ -267,6 +268,7 @@ export function LiveDashboard({ initial }: { initial: DashboardData }) {
                   <TR>
                     <TH>Name</TH>
                     <TH>Event</TH>
+                    <TH>After</TH>
                     <TH>Time</TH>
                   </TR>
                 </THead>
@@ -287,6 +289,9 @@ export function LiveDashboard({ initial }: { initial: DashboardData }) {
                         >
                           {e.event_type}
                         </Badge>
+                      </TD>
+                      <TD className="tabular-nums text-[var(--fg-muted)]">
+                        {formatRecentEventFor(e)}
                       </TD>
                       <TD className="text-[var(--fg-muted)]">
                         {formatDateTime(e.occurred_at)}
@@ -435,6 +440,18 @@ function formatElapsedForDashboard(seconds: number): string {
   const minutes = Math.floor((s % 3600) / 60);
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
   return formatDuration(s);
+}
+
+function formatRecentEventFor(event: RecentEvent): string {
+  const previous =
+    event.event_type === "enter" ? event.previous_exit_at : event.previous_enter_at;
+  if (!previous) return "-";
+
+  const seconds = Math.max(
+    0,
+    Math.round((Date.parse(event.occurred_at) - Date.parse(previous)) / 1000)
+  );
+  return formatElapsedForDashboard(seconds);
 }
 
 function normalizePersonType(

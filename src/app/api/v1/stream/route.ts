@@ -1,4 +1,9 @@
-import { registerApiStream, unregisterApiStream } from "@/lib/api-streams";
+import {
+  registerApiStream,
+  trackApiStreamInbound,
+  trackApiStreamOutbound,
+  unregisterApiStream,
+} from "@/lib/api-streams";
 import { loadDashboard } from "@/lib/dashboard";
 import { verifyApiKey } from "@/lib/api-keys";
 import { auditLog } from "@/lib/audit";
@@ -33,6 +38,27 @@ function buildSnapshot() {
   };
 }
 
+function estimateRequestBytes(request: Request): number {
+  let total = 0;
+  total += request.method.length + request.url.length + 12;
+  request.headers.forEach((value, key) => {
+    total += key.length + value.length + 4;
+  });
+  return total;
+}
+
+function buildTransferTestPayload(testId: string, bytes: number, chunk: number, total: number) {
+  const safeBytes = Math.min(Math.max(1, Math.floor(bytes)), 1024 * 1024);
+  return {
+    id: testId,
+    chunk,
+    total,
+    generated_at: new Date().toISOString(),
+    // Ephemeral filler so transfer rate can be validated without persisting data.
+    payload: "x".repeat(safeBytes),
+  };
+}
+
 export async function GET(request: Request) {
   const token = extractBearerToken(request);
   if (!token) {
@@ -63,6 +89,7 @@ export async function GET(request: Request) {
   const encoder = new TextEncoder();
   const actor = `api_key:${key.key_prefix}`;
   const streamId = registerApiStream(request, actor, "/api/v1/stream");
+  trackApiStreamInbound(streamId, estimateRequestBytes(request));
 
   auditLog({
     level: "info",
@@ -115,7 +142,9 @@ export async function GET(request: Request) {
         if (closed) return;
         try {
           const chunk = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(chunk));
+          const encoded = encoder.encode(chunk);
+          controller.enqueue(encoded);
+          trackApiStreamOutbound(streamId, encoded.byteLength);
         } catch {
           closeStream("write_failed");
         }
@@ -141,16 +170,38 @@ export async function GET(request: Request) {
         }
       };
 
-      controller.enqueue(encoder.encode(": connected\n\n"));
+      {
+        const connectedChunk = encoder.encode(": connected\n\n");
+        controller.enqueue(connectedChunk);
+        trackApiStreamOutbound(streamId, connectedChunk.byteLength);
+      }
       sendSnapshot();
 
-      listener = () => sendSnapshot();
+      listener = (event) => {
+        if (event.name === "stream.transfer_test") {
+          for (let index = 0; index < event.data.chunks; index += 1) {
+            send(
+              "transfer.test",
+              buildTransferTestPayload(
+                event.data.id,
+                event.data.chunk_bytes,
+                index + 1,
+                event.data.chunks
+              )
+            );
+          }
+          return;
+        }
+        sendSnapshot();
+      };
       onBusEvent(listener);
 
       ping = setInterval(() => {
         if (closed) return;
         try {
-          controller.enqueue(encoder.encode(": ping\n\n"));
+          const pingChunk = encoder.encode(": ping\n\n");
+          controller.enqueue(pingChunk);
+          trackApiStreamOutbound(streamId, pingChunk.byteLength);
         } catch {
           closeStream("ping_failed");
         }

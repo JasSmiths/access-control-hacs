@@ -28,6 +28,8 @@ export function registerApiStream(request: Request, actor: string, path: string)
     forwarded_chain: origin.chain,
     user_agent: request.headers.get("user-agent")?.trim() || null,
     path,
+    bytes_in: 0,
+    bytes_out: 0,
   });
 
   return id;
@@ -37,6 +39,20 @@ export function unregisterApiStream(id: string) {
   const stream = getRegistry().get(id) ?? null;
   getRegistry().delete(id);
   return stream;
+}
+
+export function trackApiStreamInbound(id: string, bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return;
+  const stream = getRegistry().get(id);
+  if (!stream) return;
+  stream.bytes_in += bytes;
+}
+
+export function trackApiStreamOutbound(id: string, bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return;
+  const stream = getRegistry().get(id);
+  if (!stream) return;
+  stream.bytes_out += bytes;
 }
 
 export function listActiveApiStreams(): ActiveApiStream[] {

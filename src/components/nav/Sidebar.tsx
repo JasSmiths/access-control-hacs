@@ -15,6 +15,7 @@ import {
   Zap,
   Plug,
   ScrollText,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { clsx } from "@/components/ui/clsx";
@@ -31,12 +32,24 @@ const nav = [
   { href: "/simulate", label: "Simulate", Icon: Zap },
   { href: "/integrations", label: "Integrations", Icon: Plug },
   { href: "/logs", label: "Logs", Icon: ScrollText },
-  { href: "/settings", label: "Settings", Icon: Settings },
 ];
+
+const settingsNav = {
+  href: "/settings",
+  label: "Settings",
+  Icon: Settings,
+  children: [
+    { href: "/settings/general", label: "General" },
+    { href: "/settings/logging", label: "Logging" },
+    { href: "/settings/access-security", label: "Access and Security" },
+    { href: "/settings/notifications", label: "Notifications" },
+  ],
+};
 
 export function Sidebar({ username }: { username: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(pathname.startsWith("/settings"));
 
   useEffect(() => {
     if (!open) return;
@@ -52,9 +65,11 @@ export function Sidebar({ username }: { username: string }) {
     window.location.href = "/login";
   }
 
+  const settingsActive = pathname.startsWith(settingsNav.href);
+  const showSettingsChildren = settingsActive || settingsOpen;
+
   return (
     <>
-      {/* Mobile top bar */}
       <header className="md:hidden sticky top-0 z-50 flex items-center justify-between px-4 h-14 border-b bg-[var(--bg-elevated)]">
         <Link href="/dashboard" className="flex items-center gap-2" aria-label="Go to dashboard">
           <BrandMark className="h-7 w-7 rounded-md" iconClassName="h-4 w-4" />
@@ -64,7 +79,7 @@ export function Sidebar({ username }: { username: string }) {
           type="button"
           aria-label="Toggle navigation"
           className="p-2 rounded-md hover:bg-[var(--bg)]"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setOpen((value) => !value)}
         >
           {open ? <X size={18} /> : <Menu size={18} />}
         </button>
@@ -77,10 +92,10 @@ export function Sidebar({ username }: { username: string }) {
               {nav.map(({ href, label, Icon }) => {
                 const active = pathname === href || pathname.startsWith(href + "/");
                 return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setOpen(false)}
                     className={clsx(
                       "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
                       active
@@ -93,6 +108,45 @@ export function Sidebar({ username }: { username: string }) {
                   </Link>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setSettingsOpen((value) => !value)}
+                className={clsx(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                  settingsActive
+                    ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                    : "text-[var(--fg)] hover:bg-[var(--bg)]"
+                )}
+              >
+                <settingsNav.Icon size={16} />
+                <span className="flex-1 text-left">{settingsNav.label}</span>
+                <ChevronDown
+                  size={14}
+                  className={clsx("transition-transform", showSettingsChildren ? "rotate-180" : "rotate-0")}
+                />
+              </button>
+              {showSettingsChildren ? (
+                <div className="ml-6 flex flex-col gap-1">
+                  {settingsNav.children.map((child) => {
+                    const active = pathname === child.href || pathname.startsWith(child.href + "/");
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        onClick={() => setOpen(false)}
+                        className={clsx(
+                          "rounded-lg px-3 py-2 text-sm",
+                          active
+                            ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                            : "text-[var(--fg-muted)] hover:bg-[var(--bg)] hover:text-[var(--fg)]"
+                        )}
+                      >
+                        {child.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
             </nav>
             <div className="px-3 pb-4 mt-auto space-y-2">
               <div className="flex items-center justify-between px-1">
@@ -151,6 +205,44 @@ export function Sidebar({ username }: { username: string }) {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((value) => !value)}
+            className={clsx(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+              settingsActive
+                ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                : "text-[var(--fg)] hover:bg-[var(--bg)]"
+            )}
+          >
+            <settingsNav.Icon size={16} />
+            <span className="flex-1 text-left">{settingsNav.label}</span>
+            <ChevronDown
+              size={14}
+              className={clsx("transition-transform", showSettingsChildren ? "rotate-180" : "rotate-0")}
+            />
+          </button>
+          {showSettingsChildren ? (
+            <div className="ml-6 flex flex-col gap-1">
+              {settingsNav.children.map((child) => {
+                const active = pathname === child.href || pathname.startsWith(child.href + "/");
+                return (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    className={clsx(
+                      "rounded-lg px-3 py-2 text-sm",
+                      active
+                        ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                        : "text-[var(--fg-muted)] hover:bg-[var(--bg)] hover:text-[var(--fg)]"
+                    )}
+                  >
+                    {child.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </nav>
         <div className="px-3 pb-4 mt-auto md:absolute md:bottom-0 md:left-0 md:right-0 space-y-2">
           <div className="flex items-center justify-between px-1">
